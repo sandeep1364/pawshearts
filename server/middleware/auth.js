@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
-module.exports = function(req, res, next) {
+module.exports = async function(req, res, next) {
   try {
     // Get token from header
     const authHeader = req.header('Authorization');
@@ -16,36 +17,47 @@ module.exports = function(req, res, next) {
     // Get token from Bearer string
     const token = authHeader.split(' ')[1];
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Add user info to request
-    req.user = {
-      id: decoded.userId,
-      userType: decoded.userType
-    };
-    
-    next();
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      // Fetch user from database
+      const user = await User.findById(decoded.userId);
+      if (!user) {
+        return res.status(401).json({
+          message: 'Authentication failed',
+          details: 'User not found'
+        });
+      }
+      
+      // Add complete user info to request
+      req.user = user;
+      next();
+    } catch (jwtError) {
+      console.error('JWT verification error:', jwtError);
+      
+      if (jwtError.name === 'TokenExpiredError') {
+        return res.status(401).json({ 
+          message: 'Authentication failed',
+          details: 'Token has expired',
+          code: 'TOKEN_EXPIRED'
+        });
+      }
+      
+      if (jwtError.name === 'JsonWebTokenError') {
+        return res.status(401).json({ 
+          message: 'Authentication failed',
+          details: 'Invalid token'
+        });
+      }
+      
+      throw jwtError;
+    }
   } catch (error) {
     console.error('Auth middleware error:', error);
-    
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        message: 'Authentication failed',
-        details: 'Invalid token'
-      });
-    }
-    
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        message: 'Authentication failed',
-        details: 'Token has expired'
-      });
-    }
-    
     res.status(500).json({ 
-      message: 'Server error',
-      details: 'An error occurred while authenticating'
+      message: 'Server error during authentication',
+      details: error.message
     });
   }
 }; 

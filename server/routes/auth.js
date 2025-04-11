@@ -44,12 +44,17 @@ const upload = multer({
 // @route   POST api/auth/register
 // @desc    Register a user
 // @access  Public
-router.post('/register', authController.register);
+router.post('/register', upload.single('profilePicture'), authController.register);
 
 // @route   POST api/auth/login
 // @desc    Login user
 // @access  Public
 router.post('/login', authController.login);
+
+// @route   POST api/auth/refresh-token
+// @desc    Refresh access token
+// @access  Public
+router.post('/refresh-token', authController.refreshToken);
 
 // @route   GET api/auth/user
 // @desc    Get current user

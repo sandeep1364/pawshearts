@@ -2,7 +2,63 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+// Helper function to generate tokens
+const generateTokens = (user) => {
+  const token = jwt.sign(
+    { userId: user._id, userType: user.userType },
+    process.env.JWT_SECRET,
+    { expiresIn: '24h' }
+  );
+
+  const refreshToken = jwt.sign(
+    { userId: user._id },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  return { token, refreshToken };
+};
+
+// Helper function to prepare user response
+const prepareUserResponse = (user) => {
+  const userObj = user.toObject();
+  delete userObj.password;
+  
+  // Ensure name is set
+  if (userObj.userType === 'regular' && !userObj.name) {
+    userObj.name = `${userObj.firstName || ''} ${userObj.lastName || ''}`.trim();
+  } else if (userObj.userType === 'business' && !userObj.name) {
+    userObj.name = userObj.businessName;
+  }
+
+  // Ensure profile picture is set
+  if (!userObj.profilePicture) {
+    userObj.profilePicture = `http://localhost:5000/uploads/profiles/default-profile.png`;
+  }
+
+  return userObj;
+};
+
 const authController = {
+  // Get current user
+  getCurrentUser: async (req, res) => {
+    try {
+      const user = await User.findById(req.user._id);
+      if (!user) {
+        return res.status(404).json({
+          message: 'User not found'
+        });
+      }
+      res.json(prepareUserResponse(user));
+    } catch (error) {
+      console.error('Get current user error:', error);
+      res.status(500).json({
+        message: 'Server error while fetching user',
+        details: error.message
+      });
+    }
+  },
+
   // Register a new user
   register: async (req, res) => {
     try {
@@ -71,7 +127,11 @@ const authController = {
         email: email.trim().toLowerCase(),
         password,
         phoneNumber: phoneNumber.trim(),
-        userType: userType.trim()
+        userType: userType.trim(),
+        profilePicture: req.file 
+          ? `http://localhost:5000/uploads/profiles/${req.file.filename}`
+          : `http://localhost:5000/uploads/profiles/default-profile.png`,
+        createdAt: new Date()
       };
 
       // Add user type specific fields
@@ -118,21 +178,14 @@ const authController = {
       const user = new User(userData);
       await user.save();
 
-      // Create JWT token
-      const token = jwt.sign(
-        { userId: user._id, userType: user.userType },
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-
-      // Remove password from response
-      const userResponse = user.toObject();
-      delete userResponse.password;
+      // Generate tokens
+      const { token, refreshToken } = generateTokens(user);
 
       res.status(201).json({
         message: 'Registration successful',
         token,
-        user: userResponse
+        refreshToken,
+        user: prepareUserResponse(user)
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -182,21 +235,14 @@ const authController = {
         });
       }
 
-      // Create JWT token
-      const token = jwt.sign(
-        { userId: user._id, userType: user.userType },
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-
-      // Remove password from response
-      const userResponse = user.toObject();
-      delete userResponse.password;
+      // Generate tokens
+      const { token, refreshToken } = generateTokens(user);
 
       res.json({
         message: 'Login successful',
         token,
-        user: userResponse
+        refreshToken,
+        user: prepareUserResponse(user)
       });
     } catch (error) {
       console.error('Login error:', error);
@@ -207,24 +253,50 @@ const authController = {
     }
   },
 
-  // Get current user
-  getCurrentUser: async (req, res) => {
+  // Refresh token
+  refreshToken: async (req, res) => {
     try {
-      console.log('Getting current user with ID:', req.user.id);
-      const user = await User.findById(req.user.id).select('-password');
-      if (!user) {
-        console.error('User not found with ID:', req.user.id);
-        return res.status(404).json({ 
-          message: 'User not found',
-          details: 'The requested user could not be found'
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        return res.status(400).json({
+          message: 'Validation Error',
+          details: 'Refresh token is required'
         });
       }
-      console.log('User found:', user._id);
-      res.json(user);
+
+      // Verify refresh token
+      const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+      
+      // Get user
+      const user = await User.findById(decoded.userId);
+      if (!user) {
+        return res.status(401).json({
+          message: 'Authentication failed',
+          details: 'User not found'
+        });
+      }
+
+      // Generate new tokens
+      const { token: newToken, refreshToken: newRefreshToken } = generateTokens(user);
+
+      res.json({
+        message: 'Token refreshed successfully',
+        token: newToken,
+        refreshToken: newRefreshToken
+      });
     } catch (error) {
-      console.error('Get current user error:', error);
-      res.status(500).json({ 
-        message: 'Server error',
+      console.error('Token refresh error:', error);
+      
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          message: 'Authentication failed',
+          details: 'Refresh token has expired'
+        });
+      }
+
+      res.status(500).json({
+        message: 'Server error during token refresh',
         details: error.message
       });
     }

@@ -27,6 +27,9 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/pawsheart
 app.use('/api/users', require('./routes/users'));
 app.use('/api/blogs', require('./routes/blogs'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/pets', require('./routes/pets'));
+app.use('/api/adoption-requests', require('./routes/adoptionRequests'));
+app.use('/api/chats', require('./routes/chats'));
 
 const PORT = process.env.PORT || 5000;
 

@@ -14,9 +14,8 @@ const blogSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  featuredImage: {
-    type: String,
-    required: true
+  image: {
+    type: String
   },
   author: {
     type: mongoose.Schema.Types.ObjectId,
@@ -49,6 +48,14 @@ const blogSchema = new mongoose.Schema({
   readTime: {
     type: Number,
     default: 0
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
@@ -56,5 +63,11 @@ const blogSchema = new mongoose.Schema({
 
 // Add text indexes for search functionality
 blogSchema.index({ title: 'text', content: 'text', tags: 'text' });
+
+// Update the updatedAt timestamp before saving
+blogSchema.pre('save', function(next) {
+  this.updatedAt = Date.now();
+  next();
+});
 
 module.exports = mongoose.model('Blog', blogSchema); 
