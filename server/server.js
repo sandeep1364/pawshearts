@@ -30,6 +30,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pets', require('./routes/pets'));
 app.use('/api/adoption-requests', require('./routes/adoptionRequests'));
 app.use('/api/chats', require('./routes/chats'));
+app.use('/api/communities', require('./routes/communities'));
 
 const PORT = process.env.PORT || 5000;
 
